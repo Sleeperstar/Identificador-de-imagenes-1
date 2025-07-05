@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import styles from '../styles/Home.module.css';
 
 export default function Home() {
@@ -7,23 +7,42 @@ export default function Home() {
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [history, setHistory] = useState([]);
+  const [isDragging, setIsDragging] = useState(false);
+  const fileInputRef = useRef(null);
 
-  const handleFileChange = (e) => {
-    const selectedFile = e.target.files[0];
-    if (selectedFile) {
+  const fetchHistory = async () => {
+    try {
+      const response = await fetch('/api/history');
+      if (response.ok) {
+        const data = await response.json();
+        setHistory(data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch history", err);
+    }
+  };
+
+  useEffect(() => {
+    fetchHistory();
+  }, []);
+
+  const handleFileSelect = (selectedFile) => {
+    if (selectedFile && selectedFile.type.startsWith('image/')) {
       setFile(selectedFile);
       setResult(null);
       setError(null);
       const reader = new FileReader();
-      reader.onloadend = () => {
-        setPreview(reader.result);
-      };
+      reader.onloadend = () => setPreview(reader.result);
       reader.readAsDataURL(selectedFile);
+    } else {
+      setError('Por favor, selecciona un archivo de imagen válido.');
     }
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const handleFileChange = (e) => handleFileSelect(e.target.files[0]);
+
+  const handleSubmit = async () => {
     if (!file) {
       setError('Por favor, selecciona una imagen.');
       return;
@@ -40,9 +59,7 @@ export default function Home() {
       try {
         const response = await fetch('/api/recognize', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ image: base64Image }),
         });
 
@@ -53,6 +70,7 @@ export default function Home() {
         }
 
         setResult(data.text);
+        fetchHistory(); // Refresh history after a new recognition
       } catch (err) {
         setError(err.message);
       } finally {
@@ -60,48 +78,95 @@ export default function Home() {
       }
     };
     reader.onerror = () => {
-        setError('No se pudo leer el archivo.');
-        setLoading(false);
-    }
+      setError('No se pudo leer el archivo.');
+      setLoading(false);
+    };
+  };
+
+  const handleDragEvents = (e, isOver) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(isOver);
+  };
+
+  const handleDrop = (e) => {
+    handleDragEvents(e, false);
+    const droppedFile = e.dataTransfer.files[0];
+    handleFileSelect(droppedFile);
   };
 
   return (
     <div className={styles.container}>
       <main className={styles.main}>
-        <h1 className={styles.title}>
-          Reconocimiento de Animales con IA
-        </h1>
+        <header className={styles.header}>
+          <h1 className={styles.title}>
+            <span>Animal</span> Recognizer AI
+          </h1>
+          <p className={styles.description}>
+            Sube una imagen y deja que la IA de Gemini identifique al animal.
+          </p>
+        </header>
 
-        <p className={styles.description}>
-          Sube una imagen de un animal y Gemini te dirá qué es.
-        </p>
+        <div className={styles.contentWrapper}>
+          <section className={styles.recognizeSection}>
+            <div
+              className={`${styles.uploadArea} ${isDragging ? styles.dragover : ''}`}
+              onClick={() => fileInputRef.current.click()}
+              onDragOver={(e) => handleDragEvents(e, true)}
+              onDragLeave={(e) => handleDragEvents(e, false)}
+              onDrop={handleDrop}
+            >
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleFileChange}
+                ref={fileInputRef}
+              />
+              <div className={styles.uploadIcon}>🖼️</div>
+              <p className={styles.uploadText}>Arrastra y suelta una imagen aquí</p>
+              <p className={styles.uploadSubText}>o haz clic para seleccionar un archivo</p>
+            </div>
 
-        <form onSubmit={handleSubmit} className={styles.form}>
-          <input type="file" accept="image/*" onChange={handleFileChange} className={styles.fileInput} />
-          <button type="submit" disabled={loading || !file} className={styles.button}>
-            {loading ? 'Reconociendo...' : 'Reconocer Animal'}
-          </button>
-        </form>
+            {error && <p className={styles.error}>{error}</p>}
 
-        {error && <p className={styles.error}>{error}</p>}
+            {preview && (
+              <div className={styles.resultCard}>
+                <img src={preview} alt="Vista previa" className={styles.previewImage} />
+              </div>
+            )}
+            
+            {file && !loading && (
+                <button onClick={handleSubmit} disabled={loading} className={styles.button}>
+                    Reconocer Animal
+                </button>
+            )}
 
-        {preview && !result && !loading && (
-          <div className={styles.previewContainer}>
-            <h2>Vista Previa:</h2>
-            <img src={preview} alt="Vista previa de la imagen" className={styles.previewImage} />
-          </div>
-        )}
+            {loading && <div className={styles.loader}></div>}
 
-        {loading && (
-            <div className={styles.loader}></div>
-        )}
+            {result && (
+              <div className={styles.resultCard}>
+                <h2>Resultado del Reconocimiento</h2>
+                <p>{result}</p>
+              </div>
+            )}
+          </section>
 
-        {result && (
-          <div className={styles.resultCard}>
-            <h2>Resultado del Reconocimiento:</h2>
-            <p>{result}</p>
-          </div>
-        )}
+          <aside className={styles.historySection}>
+            <h2>Historial Reciente</h2>
+            {history.length > 0 ? (
+              <ul className={styles.historyList}>
+                {history.map((item) => (
+                  <li key={item.id} className={styles.historyItem}>
+                    <p>{item.result_text}</p>
+                    <time>{new Date(item.created_at).toLocaleString()}</time>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className={styles.uploadSubText}>No hay reconocimientos todavía.</p>
+            )}
+          </aside>
+        </div>
       </main>
     </div>
   );
