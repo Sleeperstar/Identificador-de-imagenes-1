@@ -1,4 +1,5 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { supabase } from '../../lib/supabaseClient';
 
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
 
@@ -36,6 +37,16 @@ export default async function handler(req, res) {
     const result = await model.generateContent([prompt, imagePart]);
     const response = await result.response;
     const text = response.text();
+
+    // Guardar el resultado en Supabase
+    const { error: insertError } = await supabase
+      .from('recognitions')
+      .insert([{ result_text: text }]);
+
+    if (insertError) {
+      // No bloqueamos la respuesta al usuario, pero sí lo registramos
+      console.error('Error saving to Supabase:', insertError);
+    }
 
     res.status(200).json({ text });
   } catch (error) {
