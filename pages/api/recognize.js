@@ -17,14 +17,15 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
+  // Verify that both Supabase and Google API keys are set
+  if (!supabase || !process.env.GOOGLE_API_KEY) {
+    return res.status(500).json({ error: 'Las claves de Supabase o la API Key de Google no están configuradas correctamente en el servidor.' });
+  }
+
   const { image } = req.body;
 
   if (!image) {
     return res.status(400).json({ error: 'No se proporcionó ninguna imagen.' });
-  }
-
-  if (!process.env.GOOGLE_API_KEY) {
-    return res.status(500).json({ error: 'La API Key de Google no está configurada.' });
   }
 
   try {

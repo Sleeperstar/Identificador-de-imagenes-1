@@ -5,6 +5,11 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
+  // Verify that the Supabase client is initialized
+  if (!supabase) {
+    return res.status(500).json({ error: 'Las claves de Supabase no están configuradas correctamente en el servidor.' });
+  }
+
   try {
     const { data, error } = await supabase
       .from('recognitions')
